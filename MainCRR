@@ -7,7 +7,6 @@ RobotServoOn()
 SpdL(100) --Set the default speed of the RL to 100mm/sec
 AccL(150) --Set the default acceleration of the RL to 150 mm/sec2
 DecL(200) -- Set the default deceleration of the RL to 200 mm/sec2
-MovL(1) -- Robot moves to point 1 at the preset speed(1000mm/sec)
 
 ChangeUF(1) --Switch to UF1
 DELAY(0.1) -- Delay 0.1s
@@ -19,41 +18,48 @@ DELAY(0.1) --Delay 0.1s
 RTF = RobotTF( ) --Read the current TF of the robot, and write it into the RTF variable
 print(ret)
 
-WorkSpace (1, ON) --Set group 1 workspace to enabled, can be 0-9
-WorkSpace (1, OFF) --Set group 1 workspace to disnabled, will only be enalble claw mode, coordinate mode, or idle mode.
+--WorkSpace (1, ON) --Set group 1 workspace to enabled, can be 0-9
+--WorkSpace (1, OFF) --Set group 1 workspace to disnabled, will only be enalble claw mode, coordinate mode, or idle mode.
                    -- Sends out a warning when workspace is violated but should not send an alarm or servo off requiring manual reset
+--[[
+MovP(1001) --Home
+DELAY(1)
+MovP(1003) -- pickup
+DELAY(1)
+MovJ(3, -170)
+DO(1, ON)  -- vacuum on
+DO(2, ON)  -- vacuum on
+DELAY(0.5)
+MovJ(3, -51)
+DELAY(0.5)
+MovP(1002)
+DO(1, OFF)  -- vacuum OFF
+DO(2, OFF)  -- vacuum off
+DELAY(1)
+MovP(1001)
+]]
 
--- do inertia claculations
-local jog_xy_speed = 1000  
-local jog_z_speed  = 2000  
-local move_speedL  = 450 
-local move_speedP  = 60    
-local xp,yp;
---decide on use of workspace or some way to ensure people dont put 0,0 and crash Robot
--- create rotating function for when TCP moves to different quadrants of 0,0
+--setting jog speed,acc and dec
+SpdJ(50)       
+AccJ(50)       
+DecJ(50)   
 
--- shown below is the max and min x and y values to set bounds??
-local x_min, x_max = 380, 588
-local y_min, y_max = -140, 340
+--setting local limits,nest and home positions
+local x_min, x_max = 0, 700
+local y_min, y_max = 0, 350
 
-
--- these will represent nest and home point locations which are currently set to P1001 and P1002 respectivley
-local nest_x, nest_y = 550, 120
-local home_x, home_y = 250, 125
 local z_safe, z_pick, z_nest = 0, -180, -120
 
--- why and what
+-- local home reference
 local x, y, z = 300, 80, -20
 local x_home, y_home, z_home = x, y, z
 
--- why and what
-local jogging_axis = ""  
+local jogging_axis = "" 
 
--- Both of these function are for the Claw Mode? -- rework to be while function tat continuesly checks for jogging axis to be positive/1/high
-local function start_jog(dir, spd) --dir and spd are initialized here and sent from if conditions for claw mode
+local function start_jog(dir)
   if jogging_axis ~= dir then
-    MotionStop()                    
-    ContinueCartesianJOG(dir, spd)  
+    MotionStop()
+    ContinueCartesianJOG(dir, 0)
     jogging_axis = dir
   end
 end
@@ -65,35 +71,71 @@ local function stop_jog()
   end
 end
 
-local x_plus   = ReadModbus(0x1000, "W") 
-local x_minus  = ReadModbus(0x1001, "W")
-local y_plus   = ReadModbus(0x1002, "W")
-local y_minus  = ReadModbus(0x1003, "W")
-local z_drop   = ReadModbus(0x1004, "W")
-local home_loc = ReadModbus(0x1005, "W")
+while 1 do
 
-x=RobotX()
-y=RobotY()
+  local x_plus      = ReadModbus(0x1000, "W")
+  local x_minus     = ReadModbus(0x1001, "W")
+  local y_plus      = ReadModbus(0x1002, "W")
+  local y_minus     = ReadModbus(0x1003, "W")
+  local z_drop      = ReadModbus(0x1004, "W")
+  local home_loc    = ReadModbus(0x1005, "W")
+  local coordinates = ReadModbus(0x100A, "W")
+  local X_pos       = ReadModbus(0x1008, "W")
+  local Y_pos       = ReadModbus(0x1009, "W")
 
-if     x_plus  == 1 and x < x_max  then start_jog("X+", jog_xy_speed) --speed isnt needed unless you want it to be different otherwise follows the preset speed
-elseif x_minus == 1 and x > x_min  then start_jog("X-", jog_xy_speed) --checks coordinate to see if register is high, and the current position is less then bounds
-elseif y_plus  == 1 and y < y_max  then start_jog("Y+", jog_xy_speed) --add conditionals so if the robot is out of bounds it sends message 
-elseif y_minus == 1 and y > y_min  then start_jog("Y-", jog_xy_speed) --bounds will need to be set
-else
+  -- -------- Strat jogging if within limits with set SpdJ --------
+  if     x_plus  == 1 and x < x_max  then start_jog("X+")
+  elseif x_minus == 1 and x > x_min  then start_jog("X-")
+  elseif y_plus  == 1 and y < y_max  then start_jog("Y+")
+  elseif y_minus == 1 and y > y_min  then start_jog("Y-")
+  else
     stop_jog()
-end
+  end
 
 
-if x > x_max or x < x_min or y > y_max or y < y_min then  --what is this register
-WriteModbus(0x1007, "W", 1) --outof bounds
-DELAY(0.1)
-WriteModbus(0x1007, "W", 0)
-end
+  -- reading x and y for current robot position
+  x = RobotX()
+  y = RobotY()
+  if x > x_max or x < x_min or y > y_max or y < y_min then
+    WriteModbus(0x1007, "W", 1)   
+    DELAY(0.1)
+    WriteModbus(0x1007, "W", 0)
+  end
 
--- -------- Home --------
-if home_loc == 1 then --reads home button from vtscada so if pressed it moves to home locations
-stop_jog()
-MovP(X(x_home) + Y(y_home) + Z(z_home), SPD(move_speedP)) --can be changed to movp/movL(1001)
+ 
+  if coordinates == 1 then
+
+    MovL(X(X_pos) + Y(Y_pos) + Z(z_home))
+  end
+
+
+  if home_loc == 1 then
+    stop_jog()
+    MovL(X(x_home) + Y(y_home) + Z(z_home))
+  end
+
+  
+  if z_drop == 1 then
+    stop_jog()
+
+-- if the pickup button is pressed move to xp,yp,zsafe and then pick up ball by going to zpick and then come back and move to nest position and drop the ball
+    local xp = RobotX()
+    local yp = RobotY()
+    
+MovJ(3, -170)
+DO(1, ON)  -- vacuum on
+DO(2, ON)  -- vacuum on
+DELAY(0.5)
+MovJ(3, -51)
+DELAY(0.5)
+MovP(1002)
+DO(1, OFF)  -- vacuum OFF
+DO(2, OFF)  -- vacuum off
+DELAY(1)
+MovP(1001)
+  end
+
+  DELAY(0.02)
 end
 
 -- -------- Pick / place sequence --------
@@ -108,7 +150,7 @@ does vaccuum enable
 back up that distancemoves to nest location
 does nesting protocol
 
-]]
+
 if z_drop == 1 then
 stop_jog()
 
@@ -116,29 +158,30 @@ stop_jog()
 xp = RobotX()
 yp = RobotY()
 
-MovL(X(xp) + Y(yp) + Z(z_safe), SPD(move_speedL))
+MovP(1001)
 
 -- Down to pick
-MovL(X(xp) + Y(yp) + Z(z_pick), SPD(move_speedL))
+MovP(1003)
 
 DO(1, ON)  -- vacuum on
 
 -- Back up
-MovL(X(xp) + Y(yp) + Z(z_safe), SPD(move_speedL))
-MovL(1)
+MovP(1001)
 
 -- To nest
-MovL(X(nest_x) + Y(nest_y) + Z(z_safe), SPD(move_speedL))
-MovL(X(nest_x) + Y(nest_y) + Z(z_nest), SPD(move_speedL))
+MovP(1002)
+MovJ(4, -50)
+MovP(1003)
 
 DO(2, ON) ; DELAY(0.2) ; DO(1, OFF) ; DO(2, OFF)
 
-MovL(X(nest_x) + Y(nest_y) + Z(z_safe), SPD(move_speedL))
-MovL(X(home_x) + Y(home_y) + Z(z_safe), SPD(move_speedL))
+MovJ(4, -50)
+MovP(1001)
 end
 
 DELAY(0.02)
 end
+
 
 ------------- IDLE SEQUENCE -----------------
 --[[
@@ -147,5 +190,3 @@ when button is pressed (read from register) have robot continously repeat  movem
 
 
 ]]
-
-RobotServoOff()
