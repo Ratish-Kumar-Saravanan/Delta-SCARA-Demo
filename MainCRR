@@ -78,19 +78,6 @@ while 1 do
  
     -- -------- Pick / place sequence --------
     --update all values to be points instead of blind movements
-    --[[
-    needs to be a function so once it is called it moves the suction cup (TCP) to that point 
-    moves set offset to laser from tcp to laser
-    reads that value from sensor 
-    reverse off set
-    moves down that distance include offset based on z distance from tcp to laser
-    does vaccuum enable
-    back up that distancemoves to nest location including offset
-    moves to place location for angled place 1 then slow insert to angled place 2
-    blowoff on then off
-    reverse to angled place 1
-    back to home
-    ]]
 
     if z_drop == 1 then
         stop_jog()
@@ -110,10 +97,10 @@ while 1 do
         MovLR (-(position-15), "Z" ,SPD(50), "TOOL") -- Robot moves at the maximum speed (1500mm/sec) to the positive 10mm in Y direction of the world frame.
         DO(1, ON)  -- vacuum on
         MovLR ((position-15), "Z" ,SPD(50), "TOOL") -- Robot moves at the maximum speed (1500mm/sec) to the positive 10mm in Y direction of the world frame.
-        MovP(1002, SPD(20))
-        MovP(1003, SPD(20))
+        MovP(1002, SPD(50))
+        MovP(1003, SPD(50))
         DO(1, OFF) DELAY(0.1) ; DO(2, ON) ; DELAY(0.1) ; DO(2, OFF)
-        MovP(1002, SPD(20))
+        MovP(1002, SPD(50))
         MovP(1001, SPD(50))
 
     end
@@ -126,6 +113,5 @@ end
 --[[
 
 when button is pressed (read from register) have robot continously repeat  movements until button is pressed again at which point it will go to home position
-
 
 ]]
