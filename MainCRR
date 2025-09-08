@@ -1,65 +1,31 @@
 RobotServoOn()
---SpdJ(50) -- Set the default speed of the RL to 80%
---AccJ(50) -- Set the default acceleartaion of the RL to 50%
---DecJ(20) -- Set the default deceleartaion of the RL to 20%
-
 ---------------------------------------------------------
-SpdL(100) --Set the default speed of the RL to 100mm/sec
-AccL(150) --Set the default acceleration of the RL to 150 mm/sec2
-DecL(200) -- Set the default deceleration of the RL to 200 mm/sec2
-
 ChangeUF(1) --Switch to UF1
 DELAY(0.1) -- Delay 0.1s
-RUF = RobotUF( ) -- Read the current UF of the robot, and write it into the RUF variable
-print(ret)
 
 ChangeTF(1) --Switch to UF1
 DELAY(0.1) --Delay 0.1s
-RTF = RobotTF( ) --Read the current TF of the robot, and write it into the RTF variable
-print(ret)
 
---WorkSpace (1, ON) --Set group 1 workspace to enabled, can be 0-9
---WorkSpace (1, OFF) --Set group 1 workspace to disnabled, will only be enalble claw mode, coordinate mode, or idle mode.
-                   -- Sends out a warning when workspace is violated but should not send an alarm or servo off requiring manual reset
---[[
-MovP(1001) --Home
-DELAY(1)
-MovP(1003) -- pickup
-DELAY(1)
-MovJ(3, -170)
-DO(1, ON)  -- vacuum on
-DO(2, ON)  -- vacuum on
-DELAY(0.5)
-MovJ(3, -51)
-DELAY(0.5)
-MovP(1002)
-DO(1, OFF)  -- vacuum OFF
-DO(2, OFF)  -- vacuum off
-DELAY(1)
-MovP(1001)
-]]
+SpdL(450) --Set the default speed of the RL to 100mm/sec
+AccL(500) --Set the default acceleration of the RL to 150 mm/sec2
+DecL(500) -- Set the default deceleration of the RL to 200 mm/sec2
 
---setting jog speed,acc and dec
-SpdJ(50)       
-AccJ(50)       
-DecJ(50)   
+SpdJ(600) --Set the default speed of the RL to 100mm/sec
+AccJ(600) --Set the default acceleration of the RL to 150 mm/sec2
+DecJ(600) -- Set the default deceleration of the RL to 200 mm/sec2
 
 --setting local limits,nest and home positions
-local x_min, x_max = 0, 700
-local y_min, y_max = 0, 350
-
-local z_safe, z_pick, z_nest = 0, -180, -120
+local x_min, x_max = 0, 680 -- wall is 0-750 x
+local y_min, y_max = 0, 320 -- and 0-350 y
 
 -- local home reference
-local x, y, z = 300, 80, -20
-local x_home, y_home, z_home = x, y, z
 
 local jogging_axis = "" 
 
 local function start_jog(dir)
   if jogging_axis ~= dir then
     MotionStop()
-    ContinueCartesianJOG(dir, 0)
+    ContinueCartesianJOG(dir, 600)
     jogging_axis = dir
   end
 end
@@ -73,15 +39,15 @@ end
 
 while 1 do
 
-  local x_plus      = ReadModbus(0x1000, "W")
-  local x_minus     = ReadModbus(0x1001, "W")
-  local y_plus      = ReadModbus(0x1002, "W")
-  local y_minus     = ReadModbus(0x1003, "W")
-  local z_drop      = ReadModbus(0x1004, "W")
-  local home_loc    = ReadModbus(0x1005, "W")
-  local coordinates = ReadModbus(0x100A, "W")
-  local X_pos       = ReadModbus(0x1008, "W")
-  local Y_pos       = ReadModbus(0x1009, "W")
+  local x_plus      = ReadModbus(0x1000, "W") --44097
+  local x_minus     = ReadModbus(0x1001, "W") --44098
+  local y_plus      = ReadModbus(0x1002, "W") --44099
+  local y_minus     = ReadModbus(0x1003, "W") --44100
+  local z_drop      = ReadModbus(0x1004, "W") --44101
+  local home_loc    = ReadModbus(0x1005, "W") --44102
+  local coordinates = ReadModbus(0x100A, "W") --44107
+  local X_pos       = ReadModbus(0x1008, "W") --44105
+  local Y_pos       = ReadModbus(0x1009, "W") --44106
 
   -- -------- Strat jogging if within limits with set SpdJ --------
   if     x_plus  == 1 and x < x_max  then start_jog("X+")
@@ -89,9 +55,9 @@ while 1 do
   elseif y_plus  == 1 and y < y_max  then start_jog("Y+")
   elseif y_minus == 1 and y > y_min  then start_jog("Y-")
   else
-    stop_jog()
+  stop_jog()
   end
-
+  print("coord: ", RobotX()," , ", RobotY())
 
   -- reading x and y for current robot position
   x = RobotX()
@@ -102,82 +68,55 @@ while 1 do
     WriteModbus(0x1007, "W", 0)
   end
 
- 
   if coordinates == 1 then
-
-    MovL(X(X_pos) + Y(Y_pos) + Z(z_home))
+    MovL(X(X_pos) + Y(Y_pos) + Z(-50),SPD(50))
   end
-
 
   if home_loc == 1 then
-    stop_jog()
-    MovL(X(x_home) + Y(y_home) + Z(z_home))
+    MovP(1001,SPD(50)) --Home
   end
+ 
+    -- -------- Pick / place sequence --------
+    --update all values to be points instead of blind movements
+    --[[
+    needs to be a function so once it is called it moves the suction cup (TCP) to that point 
+    moves set offset to laser from tcp to laser
+    reads that value from sensor 
+    reverse off set
+    moves down that distance include offset based on z distance from tcp to laser
+    does vaccuum enable
+    back up that distancemoves to nest location including offset
+    moves to place location for angled place 1 then slow insert to angled place 2
+    blowoff on then off
+    reverse to angled place 1
+    back to home
+    ]]
 
-  
-  if z_drop == 1 then
-    stop_jog()
+    if z_drop == 1 then
+        stop_jog()
 
--- if the pickup button is pressed move to xp,yp,zsafe and then pick up ball by going to zpick and then come back and move to nest position and drop the ball
-    local xp = RobotX()
-    local yp = RobotY()
-    
-MovJ(3, -170)
-DO(1, ON)  -- vacuum on
-DO(2, ON)  -- vacuum on
-DELAY(0.5)
-MovJ(3, -51)
-DELAY(0.5)
-MovP(1002)
-DO(1, OFF)  -- vacuum OFF
-DO(2, OFF)  -- vacuum off
-DELAY(1)
-MovP(1001)
-  end
+        -- Up to safe
+        xp = RobotX()
+        yp = RobotY()
 
-  DELAY(0.02)
-end
+        MovLR (-35, "Y" ,SPD(50)) -- Robot moves at the maximum speed (1500mm/sec) to the positive 10mm in Y direction of the world frame.
+        -- Value of distance is read as absolute and stored in these 2 registers
+        reg_lo = RSmasterRead(1, 4100, 1)  -- (slave ID = 1, start address = 4100 decimal, quantity = 1)
+        reg_hi = RSmasterRead(1, 4101, 1)  -- (slave ID = 1, start address = 4101 decimal, quantity = 1)
+        -- Combine 2x16-bit registers into 1x32-bit unsigned integer
+        position = (reg_hi * 65536 + reg_lo)/1000  -- reg_hi = high word, reg_lo = low word (Big/Little Endian)
+        --print("Absolute position: ", position, "mm")
+        MovLR (35, "Y" ,SPD(50)) -- Robot moves at the maximum speed (1500mm/sec) to the positive 10mm in Y direction of the world frame.
+        MovLR (-(position-15), "Z" ,SPD(50), "TOOL") -- Robot moves at the maximum speed (1500mm/sec) to the positive 10mm in Y direction of the world frame.
+        DO(1, ON)  -- vacuum on
+        MovLR ((position-15), "Z" ,SPD(50), "TOOL") -- Robot moves at the maximum speed (1500mm/sec) to the positive 10mm in Y direction of the world frame.
+        MovP(1002, SPD(20))
+        MovP(1003, SPD(20))
+        DO(1, OFF) DELAY(0.1) ; DO(2, ON) ; DELAY(0.1) ; DO(2, OFF)
+        MovP(1002, SPD(20))
+        MovP(1001, SPD(50))
 
--- -------- Pick / place sequence --------
---update all values to be points instead of blind movements
---[[
-needs to be a function so once it is called it moves the suction cup (TCP) to that point 
-off set for laser based off TF offset
-reads that value from sensor 
-reverse off set
-moves down that distance 
-does vaccuum enable
-back up that distancemoves to nest location
-does nesting protocol
-
-
-if z_drop == 1 then
-stop_jog()
-
--- Up to safe
-xp = RobotX()
-yp = RobotY()
-
-MovP(1001)
-
--- Down to pick
-MovP(1003)
-
-DO(1, ON)  -- vacuum on
-
--- Back up
-MovP(1001)
-
--- To nest
-MovP(1002)
-MovJ(4, -50)
-MovP(1003)
-
-DO(2, ON) ; DELAY(0.2) ; DO(1, OFF) ; DO(2, OFF)
-
-MovJ(4, -50)
-MovP(1001)
-end
+    end
 
 DELAY(0.02)
 end
