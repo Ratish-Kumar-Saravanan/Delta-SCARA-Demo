@@ -10,10 +10,6 @@ SpdL(450) --Set the default speed of the RL to 100mm/sec
 AccL(500) --Set the default acceleration of the RL to 150 mm/sec2
 DecL(500) -- Set the default deceleration of the RL to 200 mm/sec2
 
-SpdJ(600) --Set the default speed of the RL to 100mm/sec
-AccJ(600) --Set the default acceleration of the RL to 150 mm/sec2
-DecJ(600) -- Set the default deceleration of the RL to 200 mm/sec2
-
 --setting local limits,nest and home positions
 local x_min, x_max = 0, 680 -- wall is 0-750 x
 local y_min, y_max = 0, 320 -- and 0-350 y
@@ -39,6 +35,11 @@ end
 
 while 1 do
 
+  -- reading x and y for current robot position
+  x = RobotX()
+  y = RobotY()
+  z = RobotZ()
+
   local x_plus      = ReadModbus(0x1000, "W") --44097
   local x_minus     = ReadModbus(0x1001, "W") --44098
   local y_plus      = ReadModbus(0x1002, "W") --44099
@@ -48,6 +49,8 @@ while 1 do
   local coordinates = ReadModbus(0x100A, "W") --44107
   local X_pos       = ReadModbus(0x1008, "W") --44105
   local Y_pos       = ReadModbus(0x1009, "W") --44106
+  local idle        = ReadModbus(0x100B, "W") --44108
+
 
   -- -------- Strat jogging if within limits with set SpdJ --------
   if     x_plus  == 1 and x < x_max  then start_jog("X+")
@@ -55,13 +58,11 @@ while 1 do
   elseif y_plus  == 1 and y < y_max  then start_jog("Y+")
   elseif y_minus == 1 and y > y_min  then start_jog("Y-")
   else
-  stop_jog()
+    stop_jog()
   end
+
   print("coord: ", RobotX()," , ", RobotY())
 
-  -- reading x and y for current robot position
-  x = RobotX()
-  y = RobotY()
   if x > x_max or x < x_min or y > y_max or y < y_min then
     WriteModbus(0x1007, "W", 1)   
     DELAY(0.1)
@@ -69,49 +70,90 @@ while 1 do
   end
 
   if coordinates == 1 then
-    MovL(X(X_pos) + Y(Y_pos) + Z(-50),SPD(50))
+    RZ_Pos = -90
+    if X_pos >= 0 and X_pos <= 310 and Y_pos >= 0 and Y_pos <= 220 then
+      RZ_Pos = -90
+    elseif X_pos >= 0 and X_pos <= 310 and Y_pos > 220 and Y_pos <= 450 then
+      RZ_Pos = -180
+    elseif X_pos > 310 and X_pos <= 620 and Y_pos >= 0 and Y_pos <= 220 then
+     RZ_Pos = -360
+    elseif X_pos > 310 and X_pos <= 620 and Y_pos > 220 and Y_pos <= 450 then
+      RZ_Pos = -270
+    end
+    MovL(X(X_pos) + Y(Y_pos) + Z(-50) + RZ(RZ_Pos),SPD(150))
   end
 
   if home_loc == 1 then
-    MovP(1001,SPD(50)) --Home
+    MovP(1001,SPD(100)) --Home
+  end
+
+  if idle == 1 then
+    MovP(1001,SPD(100)) --Home
+    MovP(1005,SPD(100))
+    MovP(1006,SPD(100))
+    MovP(1005,SPD(100))
+    MovP(1007,SPD(100))
+    MovP(1008,SPD(100))
+    MovP(1007,SPD(100))
+    MovP(1009,SPD(100))
+    MovP(1010,SPD(100))
+    MovP(1009,SPD(100))
+    MovP(1011,SPD(100))
+    MovP(1012,SPD(100))
+    MovP(1011,SPD(100))
+    MovP(1013,SPD(100))
+    MovP(1014,SPD(100))
+    MovP(1015,SPD(100))
+    MovP(1014,SPD(100))
+    MovP(1016,SPD(100))
+    MovP(1014,SPD(100))
+    MovP(1013,SPD(100))
   end
  
     -- -------- Pick / place sequence --------
-    --update all values to be points instead of blind movements
 
     if z_drop == 1 then
         stop_jog()
 
-        -- Up to safe
-        xp = RobotX()
-        yp = RobotY()
+        RZ_Pos = -90
+        if x >= 0 and x <= 310 and y >= 0 and y <= 220 then
+          RZ_Pos = -90
+        elseif x >= 0 and x <= 310 and y > 220 and y <= 450 then
+          RZ_Pos = -180
+        elseif x > 310 and x <= 620 and y >= 0 and y <= 220 then
+         RZ_Pos = -360
+        elseif x > 310 and x <= 620 and y > 220 and y <= 450 then
+          RZ_Pos = -270
+        end
+        MovL(X(x) + Y(y) + Z(z) + RZ(RZ_Pos),SPD(150))
 
-        MovLR (-35, "Y" ,SPD(50)) -- Robot moves at the maximum speed (1500mm/sec) to the positive 10mm in Y direction of the world frame.
+        MovLR (35, "X" ,SPD(150), "TOOL") -- Robot moves at the maximum speed (1500mm/sec) to the positive 10mm in Y direction of the world frame.
         -- Value of distance is read as absolute and stored in these 2 registers
         reg_lo = RSmasterRead(1, 4100, 1)  -- (slave ID = 1, start address = 4100 decimal, quantity = 1)
         reg_hi = RSmasterRead(1, 4101, 1)  -- (slave ID = 1, start address = 4101 decimal, quantity = 1)
         -- Combine 2x16-bit registers into 1x32-bit unsigned integer
         position = (reg_hi * 65536 + reg_lo)/1000  -- reg_hi = high word, reg_lo = low word (Big/Little Endian)
         --print("Absolute position: ", position, "mm")
-        MovLR (35, "Y" ,SPD(50)) -- Robot moves at the maximum speed (1500mm/sec) to the positive 10mm in Y direction of the world frame.
-        MovLR (-(position-15), "Z" ,SPD(50), "TOOL") -- Robot moves at the maximum speed (1500mm/sec) to the positive 10mm in Y direction of the world frame.
-        DO(1, ON)  -- vacuum on
-        MovLR ((position-15), "Z" ,SPD(50), "TOOL") -- Robot moves at the maximum speed (1500mm/sec) to the positive 10mm in Y direction of the world frame.
-        MovP(1002, SPD(50))
-        MovP(1003, SPD(50))
-        DO(1, OFF) DELAY(0.1) ; DO(2, ON) ; DELAY(0.1) ; DO(2, OFF)
-        MovP(1002, SPD(50))
-        MovP(1001, SPD(50))
+        MovLR (-35, "X" ,SPD(150), "TOOL") -- Robot moves at the maximum speed (1500mm/sec) to the positive 10mm in Y direction of the world frame.
+        z_check = z - (position-15)
+        if (z_check <= -225) then
+            print ("Drop distance is out of range") -- -228 on the Z axis is the limit for downward stroke
+        else
+            MovLR (-(position-15), "Z" ,SPD(100), "TOOL") -- Robot moves at the maximum speed (100mm/sec) to the positive 10mm in X direction.
+            DO(1, ON)  -- vacuum on
+            MovLR ((position-15), "Z" ,SPD(100), "TOOL") -- Robot moves at the maximum speed (100mm/sec) to the positive 10mm in X direction.
+            MovP(1002, SPD(150))
+            MovP(1003, SPD(50))
+            DO(1, OFF) DELAY(0.05) DO(2, ON) ; DELAY(0.05) ; DO(2, OFF)
+            MovP(1002, SPD(50))
+            MovP(1001, SPD(150))
+        end
 
     end
 
 DELAY(0.02)
 end
 
-
 ------------- IDLE SEQUENCE -----------------
---[[
+--when button is pressed (read from register) have robot continously repeat  movements until button is pressed again at which point it will go to home position
 
-when button is pressed (read from register) have robot continously repeat  movements until button is pressed again at which point it will go to home position
-
-]]
