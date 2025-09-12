@@ -11,8 +11,8 @@ AccL(500) --Set the default acceleration of the RL to 150 mm/sec2
 DecL(500) -- Set the default deceleration of the RL to 200 mm/sec2
 
 --setting local limits,nest and home positions
-local x_min, x_max = 0, 680 -- wall is 0-750 x
-local y_min, y_max = 0, 320 -- and 0-350 y
+local x_min, x_max = 0, 620 -- wall is 0-750 x
+local y_min, y_max = 0, 350 -- and 0-350 y
 
 -- local home reference
 
@@ -40,6 +40,8 @@ while 1 do
   y = RobotY()
   z = RobotZ()
 
+  WriteModbus(0x100C, "W", 101)
+
   local x_plus      = ReadModbus(0x1000, "W") --44097
   local x_minus     = ReadModbus(0x1001, "W") --44098
   local y_plus      = ReadModbus(0x1002, "W") --44099
@@ -51,6 +53,12 @@ while 1 do
   local Y_pos       = ReadModbus(0x1009, "W") --44106
   local idle        = ReadModbus(0x100B, "W") --44108
 
+  if x > x_max or x < x_min or y > y_max or y < y_min then
+    WriteModbus(0x100C, "W", 101)  
+    DELAY(0.1)
+  else
+    WriteModbus(0x100C, "W", 100)
+  end
 
   -- -------- Strat jogging if within limits with set SpdJ --------
   if     x_plus  == 1 and x < x_max  then start_jog("X+")
@@ -62,12 +70,6 @@ while 1 do
   end
 
   print("coord: ", RobotX()," , ", RobotY())
-
-  if x > x_max or x < x_min or y > y_max or y < y_min then
-    WriteModbus(0x1007, "W", 1)   
-    DELAY(0.1)
-    WriteModbus(0x1007, "W", 0)
-  end
 
   if coordinates == 1 then
     RZ_Pos = -90
@@ -138,7 +140,9 @@ while 1 do
         z_check = z - (position-15)
         if (z_check <= -225) then
             print ("Drop distance is out of range") -- -228 on the Z axis is the limit for downward stroke
+            WriteModbus(0x100C, "W", 102)
         else
+            WriteModbus(0x100C, "W", 100)
             MovLR (-(position-15), "Z" ,SPD(100), "TOOL") -- Robot moves at the maximum speed (100mm/sec) to the positive 10mm in X direction.
             DO(1, ON)  -- vacuum on
             MovLR ((position-15), "Z" ,SPD(100), "TOOL") -- Robot moves at the maximum speed (100mm/sec) to the positive 10mm in X direction.
@@ -157,3 +161,5 @@ end
 ------------- IDLE SEQUENCE -----------------
 --when button is pressed (read from register) have robot continously repeat  movements until button is pressed again at which point it will go to home position
 
+
+`
